@@ -1,0 +1,83 @@
+import os
+import pandas as pd
+from pdfminer.high_level import extract_text
+import re
+
+# Directory and Excel file paths
+directory_path = "D:/Canada/Teaching Assistant/TA for 730/Assignment 2/Submitted"
+excel_path = os.path.join(directory_path, "Assignment 2 Result.xlsx")
+
+# Read Excel file
+df = pd.read_excel(excel_path)
+
+# Ensure 'Path' column exists and is string type
+if 'Path' not in df.columns:
+    df['Path'] = ''
+df['Path'] = df['Path'].astype(str)
+
+
+# Function to extract student ID from PDF and save as TXT
+def extract_student_id_and_save_txt(pdf_path, txt_path):
+    try:
+        # Extract text from first page of PDF
+        text = extract_text(pdf_path, page_numbers=[0])
+
+        # Clean text to remove underscores
+        cleaned_text = re.sub(r'_', '', text)
+
+        # Find student ID pattern (assuming IDs start with '13' and are 6-8 digits long)
+        match = re.search(r'\b13\d{4,6}\b', cleaned_text)
+        if match:
+            student_id = match.group(0)
+            return student_id
+        else:
+            print(f"No student ID found in {pdf_path}")
+            return None
+    except Exception as e:
+        print(f"Error extracting text from {pdf_path}: {e}")
+        return None
+
+
+# List to store unmatched PDFs
+unmatched_files = []
+
+# Process each PDF file in the directory
+for filename in os.listdir(directory_path):
+    if filename.endswith(".pdf"):
+        pdf_path = os.path.join(directory_path, filename)
+        txt_filename = filename.replace('.pdf', '.txt')
+        txt_path = os.path.join(directory_path, txt_filename)
+
+        # Extract student ID from PDF and save cleaned text to TXT file
+        student_id = extract_student_id_and_save_txt(pdf_path, txt_path)
+
+        if student_id:
+            # Attempt to match student ID with Excel data
+            matching_row = df[df['ID'] == int(student_id)]
+
+            if not matching_row.empty:
+                index = matching_row.index[0]
+                first_name = df.at[index, 'First Name']
+
+                # Rename PDF file to 'First Name - Detailed Marks.pdf'
+                new_filename = f"{first_name} - Detailed Marks.pdf"
+                new_pdf_path = os.path.join(directory_path, new_filename)
+                os.rename(pdf_path, new_pdf_path)
+
+                # Update 'Path' column in Excel with new PDF path
+                df.at[index, 'Path'] = new_pdf_path
+            else:
+                unmatched_files.append(pdf_path)
+        else:
+            unmatched_files.append(pdf_path)
+
+# Save updated Excel file with 'Path' information
+df.to_excel(excel_path, index=False)
+
+# Print unmatched PDFs
+if unmatched_files:
+    print("The following PDFs did not match any student ID:")
+    for file in unmatched_files:
+        print(file)
+
+print("File renaming and path updating completed.")
